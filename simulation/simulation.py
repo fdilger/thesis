@@ -1,10 +1,19 @@
 import jax
 import jax.numpy as jnp
+from jax import Array as Tensor
+from typing import Callable, Tuple, Any, Union, Dict
+from jax.random import PRNGKey
 
 
+Params = Dict[str, Union[Tensor, Dict[str,Any]]]
+Dataset = Dict[str,Tensor]
 # implement the model
 
-def ParalellDense:
+def sigmoid(x):
+    return 1 / (1 + jnp.exp(-1 * x))
+
+
+class ParalellDense:
     def __init__(self, kn : int, L : int, r : int, d : int) -> None:
         self.kn = kn
         self.L = L
@@ -12,29 +21,80 @@ def ParalellDense:
         self.d = d
 
     def init(self, key : PRNGKey) -> Params:
-        keys = jax.random.split(key,len(layers))
-        in_proj = jax.random.normal(keys, (kn,self.r,self.d))
+        keys = jax.random.split(key,self.L+2)
+        in_proj = jax.random.normal(key, (self.kn,self.d,self.r))
         layers = {
-            'layer' + str(i) : jax.random.normal(keys, (kn,self.r,self.r))
+            'layer' + str(i) : jax.random.normal(key, (self.kn,self.r,self.r))
             for i in range(self.L-1)
         }
-        out_proj = jax.random.normal(keys[], (kn,self.r))
-        weighting = jax.random.normal(keys[0],(kn,1))
+        out_proj = jax.random.normal(key, (self.kn,self.r))
+        weighting = jax.random.normal(key,(self.kn,1))
 
         return {
             'in_proj'   : in_proj,
             'layers'    : layers,
             'out_proj'  : out_proj,
-            'weighting' : weigthing
+            'weighting' : weighting
         }
 
     def __call__(self, w : Params, x : Tensor) -> Tensor:
-        x = jnp.einsum('', x, w['in_proj'])
+        x = jnp.einsum('bi,kir->bkr', x, w['in_proj'])
+        x = sigmoid(x)
         for mat in w['layers'].values():
-            x = jnp.einsum('', x, mat)
-        x = jnp.einsum('', x, w['out_proj'])
-        x = jnp.einsum(''x, w['weighting'])
+            x = jnp.einsum('bkr,krj->bkj', x, mat)
+            x = sigmoid(x)
+        x = jnp.einsum('bkr,kr->bk', x, w['out_proj'])
+        x = sigmoid(x)
+        x = jnp.einsum('bk,kj->bj',x, w['weighting'])
         return x
             
 
-            
+
+model = ParalellDense(2,2,3,4)
+test = jnp.array([[1,2,3,4],[1,5,6,7]])
+key = jax.random.key(seed=42)
+params = model.init(key)
+print(model(params,test))
+
+
+# least squares regression
+@jax.jit
+def loss_fn(params,x,y):
+    return jnp.average(((y-model(params,x))**2))
+    
+@jax.jit
+def apply_grads(params: Params, grads: Any, learning_rate: float) -> Any:
+    return jax.tree.map(
+        lambda p, g: p - learning_rate * g,
+        params,
+        grads
+    )
+
+def train_step(
+    loss_fn: Callable,
+    params: Any,
+    batch: Tuple,
+    learning_rate: float
+) -> Tuple[Any, float]:
+    
+    loss, grads = jax.value_and_grad(loss_fn)(params,batch['x'],batch['y'])
+    params = apply_grads(params, grads, learning_rate)
+    
+    return params, loss
+
+def train_loop(
+    loss_fn: Callable,
+    params: Params,
+    data: Dict[str, Tensor],
+    num_epochs: int,
+    learning_rate: float
+) -> Params:
+    
+    for epoch in range(num_epochs):
+        # Perform single training step
+        params, loss = train_step(loss_fn, params, data, learning_rate)
+        print(f"Epoch: {epoch+1}, Loss: {loss}")
+    
+    return params
+
+train_loop(loss_fn,params,{'x' : test, 'y' : jnp.array([[1],[2]])},10,0.1)
