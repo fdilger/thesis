@@ -3,7 +3,7 @@ import jax.numpy as jnp
 from jax import Array as Tensor
 from typing import Callable, Tuple, Any, Union, Dict
 from jax.random import PRNGKey
-
+from data import rosenbrock,rastrigin,ackley,generate_data
 
 Params = Dict[str, Union[Tensor, Dict[str,Any]]]
 Dataset = Dict[str,Tensor]
@@ -49,12 +49,24 @@ class ParalellDense:
         return x
             
 
-
-model = ParalellDense(2,2,3,4)
-test = jnp.array([[1,2,3,4],[1,5,6,7]])
-key = jax.random.key(seed=42)
+key = jax.random.key(seed = 213487)
+key_data, key_model = jax.random.split(key)
+d = 15
+kn = 10
+L = 15
+r = 20
+model = ParalellDense(kn,L,r,d)
+data,Y = generate_data(
+    rosenbrock,
+    key_data,
+    0.05,
+    0.0,
+    1,
+    30000,
+    d
+)
 params = model.init(key)
-print(model(params,test))
+print(model(params,data['x']))
 
 
 # least squares regression
@@ -97,4 +109,4 @@ def train_loop(
     
     return params
 
-train_loop(loss_fn,params,{'x' : test, 'y' : jnp.array([[1],[2]])},10,0.1)
+train_loop(loss_fn,params,data,200,0.01)
