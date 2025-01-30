@@ -4,6 +4,7 @@ from jax import Array as Tensor
 from typing import Callable, Tuple, Any, Union, Dict
 from jax.random import PRNGKey
 from data import rosenbrock,rastrigin,ackley,generate_data
+from dataclasses import dataclass
 
 Params = Dict[str, Union[Tensor, Dict[str,Any]]]
 Dataset = Dict[str,Tensor]
@@ -12,23 +13,47 @@ Dataset = Dict[str,Tensor]
 def sigmoid(x):
     return 1 / (1 + jnp.exp(-1 * x))
 
-
+@dataclass
 class ParalellDense:
-    def __init__(self, kn : int, L : int, r : int, d : int) -> None:
-        self.kn = kn
-        self.L = L
-        self.r = r
-        self.d = d
-
+    kn  : int
+    L   : int
+    r   : int
+    d   : int
+    n   : int
+    c1  : float
+    c2  : float
+    tau : float
+    
     def init(self, key : PRNGKey) -> Params:
+        # fix the key mess
         keys = jax.random.split(key,self.L+2)
-        in_proj = jax.random.normal(key, (self.kn,self.d,self.r))
+        
+        maxval = self.c2 * jnp.log(n)*jnp.pow(n,self.tau)
+        in_proj = jax.random.uniform(
+            key,
+            (self.kn,self.d,self.r),
+            minval = -1* maxval,
+            maxval = maxval
+        )
+        
         layers = {
-            'layer' + str(i) : jax.random.normal(key, (self.kn,self.r,self.r))
+            'layer' + str(i) : jax.random.uniform(
+                key,
+                (self.kn,self.r,self.r),
+                minval = -1*self.c1,
+                maxval = self.c2
+            )
             for i in range(self.L-1)
         }
-        out_proj = jax.random.normal(key, (self.kn,self.r))
-        weighting = jax.random.normal(key,(self.kn,1))
+        
+        out_proj = jax.random.uniform(
+                key,
+                (self.kn,self.r,self.r),
+                minval = -1*self.c1,
+                maxval = -1*self.c2
+            )
+        
+        weighting = jnp.zeros((self.kn,1))
 
         return {
             'in_proj'   : in_proj,
@@ -49,6 +74,31 @@ class ParalellDense:
         return x
             
 
+def get_model(
+        n    : int,
+        c1   : float,
+        c2   : float,
+        c3   : float,
+        c4   : float,
+        kn   : int,
+        q    : int,
+        d    : int,
+        beta : float,
+        p    : float
+) -> ParalellDense:
+    
+    beta = jnp.log(n)*c3
+    L    = jnp.ceil(jnp.log(q+d))+1
+    r    = 2*(jnp.ceil(2p+d)**2)
+    tau  = 1 / (2p+d)
+    lam  = c5 / (n*kn**3)
+    tn   = jnp.ceil(c6*(kn**3) / beta)
+    train_params = {'lambda' : lam, 'beta' beta, 'tn' : tn}
+    return ParalellDense(kn,L,r,d,n,c1,c2,tau), train_params
+
+
+
+    
 key = jax.random.key(seed = 213487)
 key_data, key_model = jax.random.split(key)
 d = 15
@@ -67,6 +117,8 @@ data,Y = generate_data(
 )
 params = model.init(key)
 print(model(params,data['x']))
+
+
 
 
 # least squares regression

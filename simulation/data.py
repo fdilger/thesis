@@ -70,4 +70,9 @@ def generate_data(
     Z = Y + noise_var * eps
 
     return {'x' : X, 'y' : Z}, Y
-
+'''
+tomorrow:
+write some proper functions
+find the proper initalisation parameters from the proof including estimates for the c1,...cn
+implement and plan a simulation
+'''
